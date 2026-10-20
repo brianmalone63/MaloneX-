@@ -2,20 +2,20 @@
   "name": "malonex",
   "version": "0.1.0",
   "private": true,
-  "description": "MaloneX WhatsApp bot",
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/unit/*.test.ts",
+    "test": "tsx --test tests/**/*.test.ts",
     "scan:secrets": "sh scripts/scan-secrets.sh",
     "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
-    "@types/node": "26.6.3",
-    "tsx": "4.23.12",
-    "typescript": "6.0.3"
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.24",
+    "@hapi/boom": "^10.0.1"
   }
 }
