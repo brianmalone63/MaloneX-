@@ -1,0 +1,35 @@
+{
+  "name": "MaloneX",
+  "description": "Secure WhatsApp bot",
+  "repository": "https://github.com/brianmalone63/MaloneX-",
+  "logo": "https://raw.githubusercontent.com/brianmalone63/MaloneX-/main/logo.png",
+  "keywords": ["whatsapp", "bot", "baileys"],
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    }
+  ],
+  "env": {
+    "AUTH_ENCRYPTION_KEY": {
+      "description": "64-character hex string (32 bytes) for AES-256-GCM auth state encryption.",
+      "generator": "secret"
+    },
+    "BOT_PHONE_NUMBER": {
+      "description": "The phone number of the WhatsApp account (country code + number, no + sign).",
+      "required": true
+    },
+    "OWNER_IDS": {
+      "description": "Comma-separated list of owner JIDs (e.g., 254712345678@s.whatsapp.net).",
+      "required": true
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 0
+    },
+    "worker": {
+      "quantity": 1
+    }
+  }
+}
