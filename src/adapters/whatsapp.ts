@@ -65,13 +65,21 @@ export class BaileysAdapter implements WhatsAppAdapter {
     return { creds, keys };
   }
 
-  async connect(): Promise<void> {
+  async connectWithPairingCode(phoneNumber: string): Promise<void> {
     const state = await this.getAuthState();
 
     this.sock = makeWASocket({
       auth: state,
-      printQRInTerminal: true,
+      printQRInTerminal: false, // Disable QR
     });
+
+    if (!state.creds.registered) {
+      // Request the 8-digit code
+      const code = await this.sock.requestPairingCode(phoneNumber);
+      console.log(`\n=========================================`);
+      console.log(`PAIRING CODE: ${code}`);
+      console.log(`=========================================\n`);
+    }
 
     this.sock.ev.on('creds.update', (creds) => {
       this.authManager.scheduleSave({ creds });
@@ -82,8 +90,10 @@ export class BaileysAdapter implements WhatsAppAdapter {
       if (connection === 'close') {
         const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
         if (shouldReconnect) {
-          void this.connect();
+          void this.connectWithPairingCode(phoneNumber);
         }
+      } else if (connection === 'open') {
+        console.log('WhatsApp connected successfully!');
       }
     });
 
@@ -91,6 +101,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
       for (const msg of m.messages) {
         if (!msg.message || msg.key.fromMe) continue;
         
+        // Fixed: extendedTextMessage
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (!text) continue;
 
@@ -110,6 +121,11 @@ export class BaileysAdapter implements WhatsAppAdapter {
     });
   }
 
+  async connect(): Promise<void> {
+    // This interface method is required by WhatsAppAdapter
+    throw new Error('Use connectWithPairingCode instead of connect');
+  }
+
   async disconnect(): Promise<void> {
     this.sock?.end(undefined);
   }
@@ -122,7 +138,6 @@ export class BaileysAdapter implements WhatsAppAdapter {
   async getGroupMetadata(groupJid: string): Promise<GroupMetadata> {
     if (!this.sock) throw new Error('Not connected');
     
-    // Cast raw metadata to bypass strict v6 type mismatches at the adapter boundary
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const metadata = await this.sock.groupMetadata(groupJid) as any;
     
@@ -154,4 +169,4 @@ export class BaileysAdapter implements WhatsAppAdapter {
   onMessage(handler: (msg: IncomingMessage) => Promise<void>): void {
     this.messageHandler = handler;
   }
-  }
+}
