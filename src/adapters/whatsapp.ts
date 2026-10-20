@@ -26,10 +26,13 @@ export class BaileysAdapter implements WhatsAppAdapter {
       creds = initAuthCreds();
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const keysData = (loaded.keys || {}) as Record<string, Record<string, any>>;
 
     const keys: SignalKeyStore = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       get: async (type, ids) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: Record<string, any> = {};
         for (const id of ids) {
           if (keysData[type] && keysData[type][id]) {
@@ -55,7 +58,7 @@ export class BaileysAdapter implements WhatsAppAdapter {
         this.authManager.scheduleSave({ keys: keysData });
       },
       clear: async () => {
-        // Not implemented for v1
+        // Not implemented
       }
     };
 
@@ -118,13 +121,17 @@ export class BaileysAdapter implements WhatsAppAdapter {
 
   async getGroupMetadata(groupJid: string): Promise<GroupMetadata> {
     if (!this.sock) throw new Error('Not connected');
-    const metadata = await this.sock.groupMetadata(groupJid);
+    
+    // Cast raw metadata to bypass strict v6 type mismatches at the adapter boundary
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metadata = await this.sock.groupMetadata(groupJid) as any;
+    
     return {
       id: metadata.id,
       subject: metadata.subject,
       owner: metadata.owner || undefined,
-      // ownerPn is removed for v6
-      participants: metadata.participants.map(p => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      participants: (metadata.participants || []).map((p: any) => ({
         jid: p.id,
         isAdmin: p.admin === 'admin' || p.admin === 'superadmin',
         isSuperAdmin: p.admin === 'superadmin',
