@@ -1,88 +1,161 @@
-import express from 'express';
-import { BaileysAdapter } from './adapters/whatsapp.js';
-import { PostgresStorageAdapter } from './adapters/storage-postgres.js';
-import { AuthStateManager } from './core/auth-state.js';
-import { Pipeline } from './core/pipeline.js';
-import { registerCommands } from './commands/index.js';
+import { Pipeline } from '../core/pipeline.js';
+import { WhatsAppAdapter, StorageAdapter } from '../core/types.js';
 
-const app = express();
-app.use(express.urlencoded({ extended: true }));
+export function registerCommands(pipeline: Pipeline, storage: StorageAdapter) {
+  // 1. MENU COMMAND
+  pipeline.registerCommand({
+    name: 'menu',
+    category: 'general',
+    description: 'Show all available commands',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      const commands = pipeline.getCommands();
+      const categories = ['general', 'admin', 'owner', 'utility'];
+      
+      let menu = `╭━━━〔 *MALONEX BOT* 〕━━━╮\n`;
+      menu += `┃ ✦ Prefix: .\n`;
+      menu += `┃ ✦ Total Commands: ${commands.length}\n`;
+      menu += `╰━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
 
-async function main() {
-  const encryptionKey = process.env.AUTH_ENCRYPTION_KEY;
-  const pairingSecret = process.env.PAIRING_SECRET;
-  
-  if (!encryptionKey || encryptionKey.length !== 64) {
-    console.error('ERROR: AUTH_ENCRYPTION_KEY must be set as a 64-character hex string.');
-    process.exit(1);
-  }
-
-  if (!pairingSecret) {
-    console.error('ERROR: PAIRING_SECRET must be set.');
-    process.exit(1);
-  }
-
-  if (!process.env.DATABASE_URL) {
-    console.error('ERROR: DATABASE_URL must be set.');
-    process.exit(1);
-  }
-
-  // 1. Initialize Storage & Auth
-  const storage = new PostgresStorageAdapter();
-  await storage.init();
-
-  const authManager = new AuthStateManager(storage, encryptionKey);
-  const adapter = new BaileysAdapter(authManager);
-
-  // 2. Initialize Command Pipeline
-  const pipeline = new Pipeline();
-  registerCommands(pipeline);
-
-  // 3. Wire Adapter to Pipeline
-  adapter.onMessage(async (msg) => {
-    await pipeline.process(msg, adapter);
+      for (const cat of categories) {
+        const catCmds = commands.filter(c => c.category === cat);
+        if (catCmds.length === 0) continue;
+        
+        menu += `*『 ${cat.toUpperCase()} 』*\n`;
+        for (const cmd of catCmds) {
+          menu += `┃ ➤ .${cmd.name}\n`;
+        }
+        menu += `\n`;
+      }
+      
+      menu += `_MaloneX v1.0.0_`;
+      await adapter.sendText(msg.chatJid, menu);
+    }
   });
 
-  // 4. Connect to WhatsApp IMMEDIATELY on startup
-  console.log('Starting MaloneX...');
-  try {
-    await adapter.connect();
-  } catch (err) {
-    console.error('Failed to connect on startup:', err);
-  }
-
-  // 5. Start Express Server (for Heroku health checks and pairing fallback)
-  app.get('/', (req, res) => {
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>MaloneX</title></head>
-      <body style="background: #121212; color: #fff; font-family: system-ui; text-align: center; padding: 50px;">
-        <h1>MaloneX is running.</h1>
-        <p>Check your Heroku logs for the pairing code if not connected.</p>
-      </body>
-      </html>
-    `);
+  // 2. PING COMMAND
+  pipeline.registerCommand({
+    name: 'ping',
+    category: 'general',
+    description: 'Check bot latency',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      const start = Date.now();
+      const latency = start - msg.timestamp;
+      await adapter.sendText(msg.chatJid, `🏓 *Pong!*\nLatency: ${latency}ms`);
+    }
   });
 
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Web server listening on port ${PORT}`);
+  // 3. OWNER COMMAND
+  pipeline.registerCommand({
+    name: 'owner',
+    category: 'general',
+    description: 'Show bot owner contact',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      const owners = (process.env.OWNER_IDS || '')
+        .split(',')
+        .map(id => id.trim().replace(/[^0-9]/g, ''))
+        .filter(id => id.length > 0);
+        
+      let text = `👑 *Bot Owner(s)*\n\n`;
+      if (owners.length === 0) {
+        text += `Owner not configured.`;
+      } else {
+        for (const owner of owners) {
+          text += `wa.me/${owner}\n`;
+        }
+      }
+      await adapter.sendText(msg.chatJid, text);
+    }
   });
 
-  // 6. Graceful Shutdown (Handles SIGTERM for Heroku)
-  const shutdown = async () => {
-    console.log('\nShutting down gracefully...');
-    await adapter.disconnect();
-    await storage.close();
-    process.exit(0);
-  };
+  // 4. GROUP INFO COMMAND
+  pipeline.registerCommand({
+    name: 'groupinfo',
+    category: 'general',
+    description: 'Show group metadata',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      if (!msg.isGroup) return await adapter.sendText(msg.chatJid, '❌ Group only command.');
+      
+      try {
+        const metadata = await adapter.getGroupMetadata(msg.chatJid);
+        let text = `*Group Info*\n\n`;
+        text += `*Name:* ${metadata.subject}\n`;
+        text += `*ID:* ${metadata.id}\n`;
+        text += `*Participants:* ${metadata.participants.length}\n`;
+        text += `*Owner:* ${metadata.owner || 'Unknown'}\n`;
+        await adapter.sendText(msg.chatJid, text);
+      } catch (err) {
+        await adapter.sendText(msg.chatJid, '❌ Failed to fetch group info.');
+      }
+    }
+  });
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-}
+  // 5. WARN COMMAND
+  pipeline.registerCommand({
+    name: 'warn',
+    category: 'admin',
+    description: 'Warn a user in the group',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      if (!msg.isGroup) return await adapter.sendText(msg.chatJid, '❌ Group only command.');
+      
+      const metadata = await adapter.getGroupMetadata(msg.chatJid);
+      const sender = metadata.participants.find(p => p.jid === msg.senderJid);
+      if (!sender?.isAdmin) return await adapter.sendText(msg.chatJid, '❌ Only admins can use this.');
 
-main().catch((err) => {
-  console.error('Fatal startup error:', err);
-  process.exit(1);
-});
+      const targetJid = msg.text?.match(/@(\d+)/)?.[1] 
+        ? `${msg.text.match(/@(\d+)/)?.[1]}@s.whatsapp.net` 
+        : args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null;
+
+      if (!targetJid) return await adapter.sendText(msg.chatJid, '❌ Tag a user or provide a number.');
+
+      const count = await storage.addWarning(msg.chatJid, targetJid);
+      await adapter.sendText(msg.chatJid, `⚠️ *Warned:* @${targetJid.split('@')[0]}\n*Total Warnings:* ${count}/3`);
+      
+      if (count >= 3) {
+        await adapter.kickParticipant(msg.chatJid, targetJid);
+        await adapter.sendText(msg.chatJid, `👢 Kicked @${targetJid.split('@')[0]} (3 warnings reached).`);
+      }
+    }
+  });
+
+  // 6. WARNINGS COMMAND
+  pipeline.registerCommand({
+    name: 'warnings',
+    category: 'admin',
+    description: 'Check warnings for a user',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      if (!msg.isGroup) return await adapter.sendText(msg.chatJid, '❌ Group only command.');
+      
+      const targetJid = msg.text?.match(/@(\d+)/)?.[1] 
+        ? `${msg.text.match(/@(\d+)/)?.[1]}@s.whatsapp.net` 
+        : args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null;
+
+      if (!targetJid) return await adapter.sendText(msg.chatJid, '❌ Tag a user or provide a number.');
+      
+      const count = await storage.getWarnings(msg.chatJid, targetJid);
+      await adapter.sendText(msg.chatJid, `*User has ${count}/3 warnings.*`);
+    }
+  });
+
+  // 7. KICK COMMAND
+  pipeline.registerCommand({
+    name: 'kick',
+    category: 'admin',
+    description: 'Kick a user from the group',
+    handler: async (msg, args, adapter: WhatsAppAdapter) => {
+      if (!msg.isGroup) return await adapter.sendText(msg.chatJid, '❌ Group only command.');
+      
+      const metadata = await adapter.getGroupMetadata(msg.chatJid);
+      const sender = metadata.participants.find(p => p.jid === msg.senderJid);
+      if (!sender?.isAdmin) return await adapter.sendText(msg.chatJid, '❌ Only admins can use this.');
+
+      const targetJid = msg.text?.match(/@(\d+)/)?.[1] 
+        ? `${msg.text.match(/@(\d+)/)?.[1]}@s.whatsapp.net` 
+        : args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null;
+
+      if (!targetJid) return await adapter.sendText(msg.chatJid, '❌ Tag a user or provide a number.');
+
+      await adapter.kickParticipant(msg.chatJid, targetJid);
+      await adapter.sendText(msg.chatJid, `👢 Kicked @${targetJid.split('@')[0]}`);
+    }
+  });
+    }
