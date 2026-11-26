@@ -1,6 +1,6 @@
 {
   "name": "MaloneX",
-  "description": "Secure WhatsApp bot",
+  "description": "WhatsApp bot built by Brian Malone",
   "repository": "https://github.com/brianmalone63/MaloneX-",
   "logo": "https://raw.githubusercontent.com/brianmalone63/MaloneX-/main/logo.png",
   "keywords": ["whatsapp", "bot", "baileys"],
@@ -11,24 +11,63 @@
     }
   ],
   "env": {
-    "AUTH_ENCRYPTION_KEY": {
-      "description": "64-character hex string (32 bytes) for AES-256-GCM auth state encryption.",
-      "generator": "secret"
+    "STORAGE": {
+      "description": "Storage backend: file or postgres. Postgres is selected automatically when DATABASE_URL starts with postgres://",
+      "required": false
     },
-    "BOT_PHONE_NUMBER": {
-      "description": "The phone number of the WhatsApp account (country code + number, no + sign).",
-      "required": true
+    "DATABASE_URL": {
+      "description": "Postgres connection string (Heroku). Leave empty when using file storage.",
+      "required": false
     },
-    "OWNER_IDS": {
-      "description": "Comma-separated list of owner JIDs (e.g., 254712345678@s.whatsapp.net).",
-      "required": true
+    "DATA_DIR": {
+      "description": "Directory used for file storage and Baileys credentials.",
+      "value": "./data",
+      "required": false
+    },
+    "PREFIX": {
+      "description": "Command prefix.",
+      "value": ".",
+      "required": false
+    },
+    "OWNER": {
+      "description": "Owner phone numbers, comma separated, digits only (country code, no +).",
+      "required": false
+    },
+    "PUBLIC_MODE": {
+      "description": "Allow non-owner users to run public commands.",
+      "value": "false",
+      "required": false
+    },
+    "PORT": {
+      "description": "Port for the web pairing server.",
+      "value": "3000",
+      "required": false
+    },
+    "LOG_LEVEL": {
+      "description": "Log level: fatal, error, warn, info, debug, trace.",
+      "value": "info",
+      "required": false
+    },
+    "RATE_LIMIT_MS": {
+      "description": "Per-user command cooldown in milliseconds.",
+      "value": "3000",
+      "required": false
+    },
+    "AI_API_URL": {
+      "description": "Optional OpenAI-compatible endpoint for AI commands and the chatbot.",
+      "required": false
+    },
+    "AI_API_KEY": {
+      "description": "Optional API key for the AI provider.",
+      "required": false
+    },
+    "MEDIA_API_URL": {
+      "description": "Optional Cobalt-compatible media download provider base URL.",
+      "required": false
     }
   },
   "formation": {
     "web": {
-      "quantity": 0
-    },
-    "worker": {
       "quantity": 1
     }
   }

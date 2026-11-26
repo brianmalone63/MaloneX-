@@ -1,26 +1,25 @@
 {
   "name": "malonex",
-  "version": "0.1.0",
-  "private": true,
+  "version": "2.0.0",
+  "description": "MaloneX, a full-featured WhatsApp bot built by Brian Malone on @whiskeysockets/baileys",
   "type": "module",
-  "scripts": {
-    "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
-    "scan:secrets": "sh scripts/scan-secrets.sh",
-    "audit": "npm audit --audit-level=high"
+  "main": "index.js",
+  "engines": {
+    "node": ">=20.0.0"
   },
-  "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^26.6.3",
-    "@types/pg": "^8.11.0",
-    "tsx": "^4.23.12",
-    "typescript": "^6.0.3"
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "6.7.24",
-    "@hapi/boom": "^10.0.1",
-    "express": "^5.0.1",
-    "pg": "^8.11.3"
+    "@whiskeysockets/baileys": "^6.7.24",
+    "adm-zip": "^0.6.1",
+    "ffmpeg-static": "^5.3.0",
+    "jsqr": "^1.4.0",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4",
+    "wa-sticker-formatter": "^5.0.0",
+    "yt-search": "^2.13.1"
   }
 }
