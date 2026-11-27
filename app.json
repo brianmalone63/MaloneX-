@@ -39,8 +39,21 @@
       "required": false
     },
     "PORT": {
-      "description": "Port for the web pairing server.",
+      "description": "Port for the web pairing server. Heroku injects this automatically; the server binds whatever port it is given.",
       "value": "3000",
+      "required": false
+    },
+    "PORTAL_SESSION_ID": {
+      "description": "The single WhatsApp session the pairing portal manages.",
+      "value": "main",
+      "required": false
+    },
+    "PORTAL_PASSWORD": {
+      "description": "Optional. When set, the portal requires this key before showing any QR code or pairing code.",
+      "required": false
+    },
+    "ADMIN_KEY": {
+      "description": "Optional. Bearer key for the /api/sessions management API. When unset, session management is disabled.",
       "required": false
     },
     "LOG_LEVEL": {

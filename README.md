@@ -19,7 +19,16 @@ cp .env.example .env   # optional; defaults work out of the box
 npm start
 ```
 
-Open `http://localhost:3000`, create a session and scan the QR code with WhatsApp, Linked devices. The linked number becomes the bot owner; additional owners can be listed in `OWNER` or granted at runtime with `.setsudo`.
+Open `http://localhost:3000` to reach the pairing portal. It supports both real pairing methods that Baileys offers:
+
+- **Pairing code** — enter your number in international format, press **GET PAIR CODE**, and type the 8-character code into WhatsApp (Settings → Linked devices → Link a device → *Pair with phone number instead*).
+- **QR code** — switch to the QR tab and scan it with Linked devices.
+
+The portal polls live session state, refreshes the QR automatically whenever WhatsApp rotates it, counts down the pairing-code validity window and shows a clear success state once the connection opens. The linked number becomes the bot owner; additional owners can be listed in `OWNER` or granted at runtime with `.setsudo`.
+
+### How pairing works under the hood
+
+Pairing codes are requested through Baileys' `requestPairingCode` (the WhatsApp `link_code_companion_reg` handshake) only after the socket's noise handshake has completed — the portal waits for the first QR event, which is the earliest point WhatsApp accepts the request. Codes are held in memory for five minutes, never persisted and never written to logs with more than a masked phone. The QR endpoint serves the image only while the session is unpaired; once connected it returns `null` everywhere. Pairing requests are rate limited per IP (5 per 10 minutes), and if `PORTAL_PASSWORD` is set the portal requires it before showing any QR or code.
 
 ### Storage backends
 
@@ -137,32 +146,36 @@ All environment variables are optional; see `.env.example`. Runtime changes thro
 | `PREFIX` | `.` | Command prefix (per-session override with `.setprefix`) |
 | `OWNER` | empty | Comma separated owner numbers, digits only |
 | `PUBLIC_MODE` | `false` | Allow non-owners to run public commands |
-| `PORT` | `3000` | Web pairing server port |
+| `PORT` | `3000` | Web pairing server port (panel hosts and Heroku inject it automatically) |
+| `PORTAL_SESSION_ID` | `main` | The single session the pairing portal manages |
+| `PORTAL_PASSWORD` | empty | Optional key the browser must supply before QR or pairing codes are shown |
+| `ADMIN_KEY` | empty | Bearer key for the raw `/api/sessions` management API; empty disables it |
 | `LOG_LEVEL` | `info` | Log verbosity |
 | `RATE_LIMIT_MS` | `3000` | Per-user command cooldown |
 
 ## Testing
 
 ```bash
-npm test        # node:test suite: 137 tests
+npm test        # node:test suite: 166 tests
 find src test -name '*.js' -exec node --check {} \; && node --check index.js
 ```
 
-The suite covers the command handler, permission gates (owner/admin/public, private mode, PM permit), rate limiting, settings and group settings validation, both storage backends (file in a temp dir, Postgres through a fake pool), all three game engines, message recovery, formatting utilities, button payloads and the invalid-argument paths of real commands. No test needs network access or WhatsApp credentials.
+The suite covers the command handler, permission gates (owner/admin/public, private mode, PM permit), rate limiting, settings and group settings validation, both storage backends (file in a temp dir, Postgres through a fake pool), all three game engines, message recovery, formatting utilities, button payloads, the invalid-argument paths of real commands, and the pairing portal: phone validation, per-IP rate limits, pairing-code state and expiry, portal password protection, the admin gate on the session management API, and the session pairing lifecycle (already-connected guard, handshake readiness wait, code expiry, connection-open cleanup). No test needs network access or WhatsApp credentials.
 
 ## Deployment
 
 ### Panel servers (Pterodactyl and similar)
 
-1. Upload the project, run `npm install`, set `DATA_DIR` to a persistent folder.
-2. Start command: `node index.js`.
-3. Pair once from the web page on the allocated port; the session persists in `DATA_DIR`.
+1. Upload the project, run `npm install`, and point `DATA_DIR` at a persistent folder.
+2. Start command: `node index.js` (or `npm start`). The server binds `process.env.PORT` when the panel injects one, otherwise `3000`.
+3. Open the allocated port in a browser and pair with a pairing code or QR. The session persists in `DATA_DIR` and survives restarts.
+4. Optional: set `PORTAL_PASSWORD` so only you can see QR/pairing codes, and `ADMIN_KEY` if you want API access to the session management endpoints.
 
 ### Heroku
 
 1. Deploy the repository and add the Heroku Postgres addon (`DATABASE_URL` is picked up automatically).
-2. ` Procfile` is included: `web: npm start`.
-3. Pair from the app URL. Credentials are ephemeral on Heroku; settings and bot data live in Postgres.
+2. The included `Procfile` runs `web: npm start`; Heroku injects `PORT` dynamically and the server binds it. `app.json` documents every environment variable for one-click deploys.
+3. Pair from the app URL (Settings → Reveal config vars → open the web dyno URL). Credentials are ephemeral on Heroku's filesystem, so sessions re-pair after a dyno restart; settings and bot data survive in Postgres.
 
 ### Docker
 
@@ -171,9 +184,14 @@ docker build -t malonex .
 docker run -p 3000:3000 -v malonex_data:/app/data malonex
 ```
 
+The Dockerfile starts `node index.js` and honors any injected `PORT`; the volume keeps Baileys credentials across container restarts.
+
 ### Security notes
 
 - Never commit `.env` or your `data/` folder; both are pre-filled in `.gitignore`.
+- The pairing portal never returns Baileys credentials — only a status, a QR image or a pairing code, and only while the session is unpaired. QR codes and pairing codes are session credentials until consumed: set `PORTAL_PASSWORD` if the app URL is reachable by other people.
+- The raw `/api/sessions` management API (create, stop, delete sessions) requires `ADMIN_KEY` and is disabled entirely when the variable is unset.
+- Pairing-code requests are limited to 5 per IP per 10 minutes; status/QR polling to 120 per IP per minute.
 - The `$` shell and `>` eval commands are restricted to the account owner and exist for administration; remove them in `src/plugins/owner.js` if you do not want them.
-- The bot never logs message contents, only ids and counts; phone numbers are masked in every log line.
+- The bot never logs message contents, only ids and counts; phone numbers are masked in every log line and in every portal response.
 - Auto-like is capped at 60 reactions per hour per session and never reacts to your own statuses, to keep automation safe.

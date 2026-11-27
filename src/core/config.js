@@ -30,7 +30,22 @@ export function loadConfig(env = process.env) {
     databaseUrl,
     dataDir: env.DATA_DIR && String(env.DATA_DIR).length > 0 ? String(env.DATA_DIR) : './data',
     port: Number.parseInt(String(env.PORT || '3000'), 10) || 3000,
-    logLevel: env.LOG_LEVEL && String(env.LOG_LEVEL).length > 0 ? String(env.LOG_LEVEL) : 'info'
+    logLevel: env.LOG_LEVEL && String(env.LOG_LEVEL).length > 0 ? String(env.LOG_LEVEL) : 'info',
+    // Pairing portal: the portal always talks to this one session only.
+    portalSessionId: env.PORTAL_SESSION_ID && String(env.PORTAL_SESSION_ID).trim().length > 0
+      ? String(env.PORTAL_SESSION_ID).trim()
+      : 'main',
+    // Optional extra gate for the portal (QR and pair codes are session
+    // credentials until they are consumed). When set, callers must send
+    // "Authorization: Bearer <key>" or "x-portal-key: <key>".
+    portalPassword: env.PORTAL_PASSWORD && String(env.PORTAL_PASSWORD).trim().length > 0
+      ? String(env.PORTAL_PASSWORD).trim()
+      : null,
+    // Protects the raw /api/sessions management API. When unset the
+    // management API is disabled entirely (secure default).
+    adminKey: env.ADMIN_KEY && String(env.ADMIN_KEY).trim().length > 0
+      ? String(env.ADMIN_KEY).trim()
+      : null
   };
 }
 

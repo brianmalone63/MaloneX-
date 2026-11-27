@@ -13,6 +13,13 @@ import * as features from './features.js';
 import { panel } from './format.js';
 
 const MAX_BACKOFF_MS = 60000;
+// How long the portal may wait for the noise handshake to finish before a
+// pairing-code request fails. The QR event is the signal that the socket is
+// ready: Baileys only sends it once the WebSocket is open.
+const PAIRING_READY_TIMEOUT_MS = 30000;
+const PAIRING_READY_POLL_MS = 250;
+// WhatsApp pairing codes stop being accepted after a few minutes.
+const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
 
 // One WhatsApp session: socket lifecycle, reconnect rules, diagnostics and
 // the in-memory settings cache.
@@ -29,6 +36,12 @@ export class Session {
     this.connected = false;
     this.status = 'idle';
     this.lastQr = null;
+    this.lastQrAt = null;
+    this.qrVersion = 0;
+    // The active pairing-code request (real Baileys requestPairingCode flow).
+    // Cleared when the connection opens or when the code expires.
+    this.pairRequest = null;
+    this.pairingReadyTimeoutMs = PAIRING_READY_TIMEOUT_MS;
     this.settings = applyDefaults({});
     this.health = {
       startedAt: new Date().toISOString(),
@@ -52,6 +65,7 @@ export class Session {
       phone: this.ownJid ? this.ownJid.split('@')[0] : null,
       connected: this.connected,
       generation: this.generation,
+      qrVersion: this.qrVersion,
       health: { ...this.health }
     };
   }
@@ -106,12 +120,79 @@ export class Session {
     this.sock = null;
     this.connected = false;
     this.status = 'stopped';
+    this.pairRequest = null;
     this.stopping = false;
   }
 
   async restart() {
     await this.stop();
     return this.start();
+  }
+
+  // The pairing request is valid only until WhatsApp stops accepting the
+  // code; expiry is checked lazily so no timers are needed.
+  activePairRequest() {
+    if (!this.pairRequest) return null;
+    if (Date.now() > this.pairRequest.expiresAt) {
+      this.pairRequest = null;
+      return null;
+    }
+    return this.pairRequest;
+  }
+
+  pairingReady() {
+    // The QR event proves the WebSocket handshake finished, which is the
+    // earliest point at which Baileys can send the link_code_companion_reg
+    // node; sending it earlier throws Boom('Connection Closed').
+    if (this.connected) return true;
+    return this.lastQrAt !== null && Date.now() - this.lastQrAt < 120000;
+  }
+
+  // Real phone-number pairing through Baileys. The returned code is what the
+  // owner types into WhatsApp: Linked devices > Link a device > "Pair with
+  // phone number instead". This is the genuine WhatsApp link_code flow; no
+  // code is generated locally beyond what Baileys itself produces.
+  async requestPairingCode(phone) {
+    if (this.stopping) throw new Error('The session is shutting down. Try again shortly.');
+    if (this.connected) {
+      const err = new Error('MaloneX is already connected to WhatsApp. Log out first to pair a new number.');
+      err.statusCode = 409;
+      throw err;
+    }
+    if (!this.sock) await this.start();
+    if (!this.sock) throw new Error('The WhatsApp socket could not be started. Check the server logs.');
+
+    const deadline = Date.now() + this.pairingReadyTimeoutMs;
+    while (!this.pairingReady()) {
+      if (Date.now() > deadline) {
+        throw new Error('WhatsApp did not become ready in time. Check the server connection and try again.');
+      }
+      await new Promise((resolve) => setTimeout(resolve, PAIRING_READY_POLL_MS));
+      // The socket may die while waiting (network loss); surface it instead
+      // of waiting the full timeout for nothing.
+      if (!this.sock && !this.connected) {
+        throw new Error('The WhatsApp connection dropped before pairing could start. Try again.');
+      }
+    }
+
+    let code;
+    try {
+      code = await this.sock.requestPairingCode(phone);
+    } catch (err) {
+      this.logger.warn(`pairing code request failed: ${err.message}`);
+      throw new Error(`WhatsApp rejected the pairing request (${err.message}). Try again in a moment.`);
+    }
+    if (!code) throw new Error('WhatsApp did not return a pairing code. Try again.');
+
+    this.pairRequest = {
+      phone,
+      code: String(code).toUpperCase(),
+      requestedAt: new Date().toISOString(),
+      expiresAt: Date.now() + PAIR_CODE_TTL_MS
+    };
+    this.status = 'pairing';
+    this.logger.info(`pairing code requested for ${phone}`);
+    return this.pairRequest;
   }
 
   // Explicit logout from the owner command: disconnect, clear credentials,
@@ -132,11 +213,15 @@ export class Session {
     const { connection, lastDisconnect, qr } = update;
     if (qr) {
       this.lastQr = qr;
+      this.lastQrAt = Date.now();
+      this.qrVersion += 1;
       this.status = 'pairing';
     }
     if (connection === 'open') {
       this.connected = true;
       this.status = 'connected';
+      this.pairRequest = null;
+      this.lastQr = null;
       this.reconnectAttempts = 0;
       this.ownJid = this.sock?.user?.id ? jidNormalizedUser(this.sock.user.id) : null;
       this.health.lastConnectedAt = new Date().toISOString();

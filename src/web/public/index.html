@@ -3,245 +3,554 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MaloneX Pairing</title>
+  <meta name="color-scheme" content="dark">
+  <title>MaloneX — Pair your WhatsApp</title>
   <style>
     :root {
-      --bg: #0f1115;
-      --card: #171a21;
-      --border: #262b36;
-      --text: #e8eaf0;
-      --muted: #8b92a3;
-      --accent: #4f7cff;
-      --ok: #2fa96e;
-      --warn: #d08b2c;
-      --bad: #cf5c5c;
+      --bg: #000000;
+      --panel: rgba(16, 16, 20, 0.92);
+      --field: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.10);
+      --text: #f4f5f8;
+      --muted: #9aa0ae;
+      --violet: #8b5cf6;
+      --cyan: #22d3ee;
+      --pink: #ec4899;
+      --amber: #f59e0b;
+      --ok: #34d399;
+      --bad: #f87171;
+      --radius: 26px;
     }
     * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
     body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
       min-height: 100vh;
-    }
-    .wrap { max-width: 880px; margin: 0 auto; padding: clamp(16px, 4vw, 40px); }
-    header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 24px; }
-    h1 { font-size: clamp(1.4rem, 4vw, 2rem); margin: 0; letter-spacing: 0.04em; }
-    .sub { color: var(--muted); font-size: 0.9rem; }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px;
-      margin-bottom: 16px;
-    }
-    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    input[type="text"] {
-      flex: 1 1 220px;
       background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(14px, 4vw, 40px);
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Subtle ambient glow behind the panel */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(60% 45% at 50% 12%, rgba(139, 92, 246, 0.16), transparent 70%),
+        radial-gradient(50% 40% at 82% 85%, rgba(34, 211, 238, 0.10), transparent 70%),
+        radial-gradient(45% 40% at 12% 80%, rgba(236, 72, 153, 0.10), transparent 70%);
+    }
+    .shell { position: relative; z-index: 1; width: min(430px, 100%); }
+
+    /* Rounded panel with a subtle animated multicolor glowing border */
+    .panel {
+      position: relative;
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: clamp(22px, 5vw, 34px);
+      overflow: hidden;
+    }
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      padding: 1.5px;
+      background: conic-gradient(from var(--spin, 0deg),
+        rgba(139, 92, 246, 0.9), rgba(34, 211, 238, 0.55), rgba(236, 72, 153, 0.75),
+        rgba(245, 158, 11, 0.45), rgba(139, 92, 246, 0.9));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      animation: borderSpin 9s linear infinite;
+      opacity: 0.85;
+      pointer-events: none;
+    }
+    .panel::after {
+      content: "";
+      position: absolute;
+      inset: -18px;
+      border-radius: calc(var(--radius) + 18px);
+      background: conic-gradient(from var(--spin, 0deg),
+        rgba(139, 92, 246, 0.16), rgba(34, 211, 238, 0.10), rgba(236, 72, 153, 0.14),
+        rgba(245, 158, 11, 0.08), rgba(139, 92, 246, 0.16));
+      filter: blur(26px);
+      z-index: -1;
+      animation: borderSpin 9s linear infinite;
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    @property --spin { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+    @keyframes borderSpin { to { --spin: 360deg; } }
+    @media (prefers-reduced-motion: reduce) {
+      .panel::before, .panel::after { animation: none; }
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .mark {
+      width: 44px; height: 44px; border-radius: 13px;
+      background: linear-gradient(135deg, var(--violet), var(--pink) 55%, var(--cyan));
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 1.25rem; color: #fff;
+      box-shadow: 0 6px 22px rgba(139, 92, 246, 0.45);
+      flex: none;
+    }
+    h1 {
+      margin: 0; font-size: clamp(1.35rem, 5.5vw, 1.7rem);
+      letter-spacing: 0.02em; font-weight: 700;
+      background: linear-gradient(90deg, #fff, #c4b5fd 60%, #67e8f9);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .tagline { color: var(--muted); font-size: clamp(0.82rem, 3vw, 0.9rem); margin: 0 0 18px 56px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 0.78rem; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 5px 12px; margin-bottom: 20px; text-transform: capitalize;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+    .pill[data-state="connected"] { color: var(--ok); border-color: rgba(52, 211, 153, 0.5); }
+    .pill[data-state="connected"] .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .pill[data-state="pairing"], .pill[data-state="connecting"], .pill[data-state="reconnecting"] { color: var(--amber); border-color: rgba(245, 158, 11, 0.5); }
+    .pill[data-state="pairing"] .dot, .pill[data-state="connecting"] .dot, .pill[data-state="reconnecting"] .dot {
+      background: var(--amber); animation: pulse 1.2s ease-in-out infinite;
+    }
+    .pill[data-state="logged_out"], .pill[data-state="disconnected"], .pill[data-state="stopped"] { color: var(--bad); border-color: rgba(248, 113, 113, 0.5); }
+    .pill[data-state="logged_out"] .dot, .pill[data-state="disconnected"] .dot, .pill[data-state="stopped"] .dot { background: var(--bad); }
+    @keyframes pulse { 50% { opacity: 0.25; } }
+
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 8px; }
+    .input {
+      width: 100%;
+      background: var(--field);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text);
+      font-size: clamp(1rem, 4vw, 1.1rem);
+      padding: 14px 16px;
+      letter-spacing: 0.03em;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25); }
+    .input::placeholder { color: rgba(255, 255, 255, 0.28); }
+    .hint { color: var(--muted); font-size: 0.78rem; margin: 8px 0 0; line-height: 1.45; }
+
+    .btn {
+      width: 100%;
+      border: none; border-radius: 14px;
+      padding: 14px 18px;
+      font-size: clamp(0.95rem, 4vw, 1.05rem);
+      font-weight: 600; color: #fff;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .btn:active { transform: scale(0.985); }
+    .btn:disabled { opacity: 0.55; cursor: default; }
+    .btn-primary {
+      margin-top: 16px;
+      background: linear-gradient(90deg, var(--violet), var(--pink) 60%, var(--cyan));
+      background-size: 160% 100%;
+      box-shadow: 0 8px 26px rgba(139, 92, 246, 0.35);
+    }
+    .btn-primary:hover:not(:disabled) { background-position: 100% 0; box-shadow: 0 10px 30px rgba(236, 72, 153, 0.35); }
+    .btn-ghost {
+      margin-top: 10px;
+      background: transparent;
       border: 1px solid var(--border);
       color: var(--text);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 1rem;
+      font-weight: 500;
     }
-    button {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 0.95rem;
-      cursor: pointer;
+    .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.3); }
+    .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.75rem; margin: 18px 0 0; }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+    .view { display: none; }
+    .view.active { display: block; animation: fade 0.25s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .spinner {
+      width: 46px; height: 46px; margin: 8px auto 14px;
+      border-radius: 50%;
+      border: 3px solid rgba(139, 92, 246, 0.25);
+      border-top-color: var(--violet);
+      border-right-color: var(--pink);
+      animation: spin 0.8s linear infinite;
     }
-    button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
-    button.danger { background: transparent; border: 1px solid var(--bad); color: var(--bad); }
-    button:disabled { opacity: 0.5; cursor: default; }
-    .pill {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 3px 10px;
-      font-size: 0.78rem;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      text-transform: capitalize;
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .center { text-align: center; }
+    .state-title { font-size: 1.05rem; font-weight: 600; margin: 0 0 6px; }
+    .state-text { color: var(--muted); font-size: 0.88rem; line-height: 1.55; margin: 0; }
+
+    .code {
+      font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+      font-size: clamp(1.9rem, 9vw, 2.5rem);
+      font-weight: 700; letter-spacing: 0.14em;
+      margin: 16px 0 4px;
+      background: linear-gradient(90deg, #fff, #a5b4fc);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      user-select: all;
     }
-    .pill.connected { color: var(--ok); border-color: var(--ok); }
-    .pill.pairing, .pill.reconnecting { color: var(--warn); border-color: var(--warn); }
-    .pill.logged_out, .pill.disconnected, .pill.stopped { color: var(--bad); border-color: var(--bad); }
-    .session { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
-    .session .name { font-weight: 600; font-size: 1.02rem; }
-    .session .meta { color: var(--muted); font-size: 0.85rem; }
-    .qr { text-align: center; padding: 16px; }
-    .qr img { max-width: 100%; height: auto; border-radius: 8px; background: #fff; padding: 8px; }
-    .empty { color: var(--muted); text-align: center; padding: 12px 0; }
-    .muted { color: var(--muted); font-size: 0.85rem; }
-    #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px 18px; display: none; }
+    .code-timer { color: var(--amber); font-size: 0.85rem; margin-bottom: 4px; }
+    .copy-btn {
+      margin-top: 12px; width: auto; padding: 10px 22px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid var(--border); color: var(--text);
+      border-radius: 12px; font-size: 0.88rem; font-weight: 500; cursor: pointer;
+    }
+    .copy-btn:hover { background: rgba(255, 255, 255, 0.12); }
+    .waiting-dots { display: inline-flex; gap: 4px; margin-left: 6px; }
+    .waiting-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: bounce 1.1s infinite; }
+    .waiting-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .waiting-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce { 35% { transform: translateY(-4px); opacity: 0.4; } }
+
+    .qr-box {
+      margin: 14px auto 10px; padding: 14px;
+      background: #fff; border-radius: 18px;
+      width: min(240px, 68vw);
+      box-shadow: 0 0 34px rgba(139, 92, 246, 0.35);
+    }
+    .qr-box img { display: block; width: 100%; height: auto; }
+    .qr-wait { height: 180px; display: grid; place-items: center; color: #111; font-size: 0.85rem; }
+
+    .success-badge {
+      width: 64px; height: 64px; margin: 6px auto 14px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, rgba(52, 211, 153, 0.5), rgba(52, 211, 153, 0.12));
+      border: 1.5px solid var(--ok);
+      display: grid; place-items: center;
+      box-shadow: 0 0 30px rgba(52, 211, 153, 0.4);
+    }
+    .success-badge svg { width: 30px; height: 30px; }
+
+    .error-banner {
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: var(--bad);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin-bottom: 14px;
+      word-break: break-word;
+    }
+    .steps { margin: 14px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.82rem; line-height: 1.7; }
+    .steps li { padding-left: 20px; position: relative; }
+    .steps li::before { content: "›"; position: absolute; left: 4px; color: var(--violet); font-weight: 700; }
+    .footer { margin-top: 22px; text-align: center; color: rgba(255, 255, 255, 0.3); font-size: 0.72rem; letter-spacing: 0.06em; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>MaloneX</h1>
-      <span class="sub">Session pairing and control</span>
-    </header>
+  <div class="ambient" aria-hidden="true"></div>
+  <main class="shell">
+    <section class="panel" aria-label="MaloneX WhatsApp pairing">
+      <header>
+        <div class="brand">
+          <div class="mark" aria-hidden="true">M</div>
+          <h1>MaloneX</h1>
+        </div>
+        <p class="tagline">Link your WhatsApp to the bot</p>
+        <span class="pill" id="pill" data-state="idle"><span class="dot"></span><span id="pillText">Checking status…</span></span>
+      </header>
 
-    <div class="card">
-      <div class="row">
-        <input id="newId" type="text" placeholder="New session id (letters, numbers, - and _)" maxlength="64">
-        <button id="createBtn">Create and pair</button>
+      <!-- Portal key (only shown when PORTAL_PASSWORD is set on the server) -->
+      <div class="view" id="view-key">
+        <label for="portalKey">Portal key</label>
+        <input class="input" id="portalKey" type="password" autocomplete="current-password" placeholder="Server key">
+        <p class="hint">This portal is protected by PORTAL_PASSWORD. Enter the key configured on the server.</p>
+        <button class="btn btn-primary" id="keyBtn">Unlock</button>
       </div>
-      <p class="muted">A QR code appears once WhatsApp is ready. Scan it from WhatsApp, Linked devices.</p>
-    </div>
 
-    <div id="qrCard" class="card qr" style="display:none">
-      <h2 style="margin-top:0">Scan to pair</h2>
-      <img id="qrImg" alt="WhatsApp pairing QR code">
-      <p class="muted" id="qrSession"></p>
-    </div>
+      <!-- Idle: phone input + pair code / QR choice -->
+      <div class="view" id="view-idle">
+        <label for="phone">Phone number</label>
+        <input class="input" id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+254 712 345 678">
+        <p class="hint">International format with country code, no leading zero. On your phone open <b>WhatsApp → Settings → Linked devices → Link a device → Pair with phone number instead</b>, then request the code.</p>
+        <button class="btn btn-primary" id="codeBtn">GET PAIR CODE</button>
+        <div class="divider">or</div>
+        <button class="btn btn-ghost" id="qrBtn">Use QR code instead</button>
+      </div>
 
-    <div class="card">
-      <h2 style="margin-top:0; font-size:1.1rem">Sessions</h2>
-      <div id="sessions" class="empty">Loading...</div>
-    </div>
-  </div>
-  <div id="toast"></div>
+      <!-- Loading -->
+      <div class="view center" id="view-loading">
+        <div class="spinner" role="status" aria-label="Loading"></div>
+        <p class="state-title" id="loadingTitle">Contacting WhatsApp…</p>
+        <p class="state-text">This takes a few seconds while the secure handshake completes.</p>
+      </div>
+
+      <!-- Pair code displayed -->
+      <div class="view center" id="view-code">
+        <p class="state-title">Enter this code on WhatsApp</p>
+        <p class="state-text">On your phone: Linked devices → Link a device → <b>Pair with phone number instead</b></p>
+        <div class="code" id="pairCode">····-····</div>
+        <p class="code-timer" id="codeTimer"></p>
+        <button class="copy-btn" id="copyBtn">Copy code</button>
+        <p class="state-text" style="margin-top:14px">Waiting for you to enter the code<span class="waiting-dots"><span></span><span></span><span></span></span></p>
+        <button class="btn btn-ghost" id="codeBackBtn">Back</button>
+      </div>
+
+      <!-- QR displayed -->
+      <div class="view center" id="view-qr">
+        <p class="state-title">Scan with your phone</p>
+        <p class="state-text">WhatsApp → Settings → Linked devices → Link a device</p>
+        <div class="qr-box"><div class="qr-wait" id="qrWait">Waiting for WhatsApp…</div><img id="qrImg" alt="WhatsApp pairing QR code" style="display:none"></div>
+        <p class="state-text">The QR refreshes automatically every time WhatsApp rotates it.</p>
+        <button class="btn btn-ghost" id="qrBackBtn">Back</button>
+      </div>
+
+      <!-- Success -->
+      <div class="view center" id="view-success">
+        <div class="success-badge" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <p class="state-title">MaloneX is connected</p>
+        <p class="state-text" id="successPhone">Linked to your WhatsApp account.</p>
+        <p class="state-text" style="margin-top:10px">You can close this page — the bot keeps running and will reconnect on its own.</p>
+      </div>
+
+      <!-- Error -->
+      <div class="view" id="view-error">
+        <div class="error-banner" id="errorText" role="alert"></div>
+        <button class="btn btn-primary" id="retryBtn">Try again</button>
+        <button class="btn btn-ghost" id="errorQrBtn">Use QR code instead</button>
+      </div>
+
+      <p class="footer">MALONEX · BUILT BY BRIAN MALONE</p>
+    </section>
+  </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let qrTarget = null;
+    const KEY_STORAGE = 'malonex_portal_key';
+    let portalKey = sessionStorage.getItem(KEY_STORAGE) || '';
+    let currentView = null;
+    let lastQrVersion = null;
+    let pollTimer = null;
+    let timerInterval = null;
+    let qrVisible = false;
+    let pollErrored = false;
 
-    function toast(msg) {
-      const el = $('toast');
-      el.textContent = msg;
-      el.style.display = 'block';
-      setTimeout(() => { el.style.display = 'none'; }, 2600);
+    const VIEWS = ['view-key', 'view-idle', 'view-loading', 'view-code', 'view-qr', 'view-success', 'view-error'];
+
+    function show(view) {
+      currentView = view;
+      for (const v of VIEWS) $(v).classList.toggle('active', v === view);
+      qrVisible = view === 'view-qr';
+      if (view === 'view-qr') refreshQr();
     }
 
-    async function api(path, opts) {
-      const res = await fetch(path, opts);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Request failed');
+    function setPill(state, text) {
+      $('pill').dataset.state = state;
+      $('pillText').textContent = text;
+    }
+
+    function showError(message) {
+      $('errorText').textContent = message;
+      show('view-error');
+    }
+
+    function headers(extra = {}) {
+      return portalKey ? { 'x-portal-key': portalKey, ...extra } : extra;
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, { ...opts, headers: headers(opts.headers || {}) });
+      let data = {};
+      try { data = await res.json(); } catch { /* non-JSON error body */ }
+      if (res.status === 401) {
+        const err = new Error(data.error || 'Portal key required');
+        err.authRequired = true;
+        throw err;
+      }
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       return data;
     }
 
-    async function refresh() {
+    // ---- Status polling ----------------------------------------------------
+    function startPolling() {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(pollStatus, 2500);
+    }
+
+    async function pollStatus() {
+      if (currentView === 'view-loading') return;
       try {
-        const data = await api('/api/sessions');
-        const box = $('sessions');
-        if (!data.sessions.length) {
-          box.className = 'empty';
-          box.textContent = 'No sessions yet. Create one above.';
-          return;
-        }
-        box.className = '';
-        box.innerHTML = '';
-        for (const s of data.sessions) {
-          const card = document.createElement('div');
-          card.className = 'session';
-          card.style.margin = '10px 0';
-          const info = document.createElement('div');
-          const name = document.createElement('div');
-          name.className = 'name';
-          name.textContent = s.id;
-          const meta = document.createElement('div');
-          meta.className = 'meta';
-          meta.textContent = s.phone ? 'Linked: ' + s.phone.slice(0, 3) + '*******' + s.phone.slice(-1) : 'Not linked';
-          info.append(name, meta);
-          const pill = document.createElement('span');
-          pill.className = 'pill ' + (s.status || 'stopped');
-          pill.textContent = s.status || 'stopped';
-          const actions = document.createElement('div');
-          actions.style.display = 'flex';
-          actions.style.gap = '6px';
-          const qrBtn = button('QR', 'ghost', () => showQr(s.id));
-          const startBtn = button('Start', 'ghost', () => act('/api/sessions/' + s.id + '/start'));
-          const stopBtn = button('Stop', 'ghost', () => act('/api/sessions/' + s.id + '/stop'));
-          const delBtn = button('Delete', 'danger', () => {
-            if (!confirm('Delete session ' + s.id + '?')) return;
-            act('/api/sessions/' + s.id, { method: 'DELETE' });
-          });
-          actions.append(qrBtn, startBtn, stopBtn, delBtn);
-          card.append(info, pill, actions);
-          box.append(card);
-        }
+        const s = await api('/api/pair/status');
+        pollErrored = false;
+        applyStatus(s);
       } catch (err) {
-        $('sessions').textContent = 'Failed to load sessions: ' + err.message;
+        if (err.authRequired) { show('view-key'); return; }
+        // One transient network error should not wipe the screen; show a
+        // quiet state change instead.
+        if (!pollErrored) {
+          pollErrored = true;
+          setPill('disconnected', 'Connection lost — retrying…');
+        }
       }
     }
 
-    function button(label, cls, onClick) {
-      const b = document.createElement('button');
-      b.textContent = label;
-      b.className = cls;
-      b.addEventListener('click', onClick);
-      return b;
-    }
-
-    async function act(path, opts) {
-      try {
-        await api(path, opts);
-        toast('Done');
-        refresh();
-      } catch (err) {
-        toast(err.message);
-      }
-    }
-
-    async function create() {
-      const id = $('newId').value.trim();
-      if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) {
-        toast('Use letters, numbers, hyphen and underscore only.');
+    function applyStatus(s) {
+      if (s.connected) {
+        stopTimers();
+        setPill('connected', 'Connected');
+        $('successPhone').textContent = s.phone ? `Linked to ${s.phone}` : 'Linked to your WhatsApp account.';
+        show('view-success');
         return;
       }
+      setPill(s.status || 'idle', describeStatus(s.status));
+      if (s.code) {
+        renderCode(s.code);
+        return;
+      }
+      if (currentView === 'view-code') {
+        // The code expired server-side without a connection; go back.
+        stopTimers();
+        show('view-idle');
+        return;
+      }
+      if (qrVisible && s.qrVersion !== lastQrVersion && lastQrVersion !== null) refreshQr();
+    }
+
+    function describeStatus(status) {
+      const map = {
+        idle: 'Waiting to start',
+        connecting: 'Connecting to WhatsApp…',
+        pairing: 'Waiting for pairing…',
+        connected: 'Connected',
+        reconnecting: 'Reconnecting…',
+        replaced: 'Opened elsewhere',
+        logged_out: 'Logged out',
+        disconnected: 'Disconnected',
+        stopped: 'Stopped'
+      };
+      return map[status] || status;
+    }
+
+    // ---- Pair code flow ----------------------------------------------------
+    async function requestCode() {
+      const phone = $('phone').value.trim();
+      if (!phone) { showError('Enter your WhatsApp phone number first, including the country code.'); return; }
+      $('codeBtn').disabled = true;
+      $('loadingTitle').textContent = 'Contacting WhatsApp…';
+      show('view-loading');
       try {
-        await api('/api/sessions', {
+        const result = await api('/api/pair/code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id })
+          body: JSON.stringify({ phone })
         });
-        $('newId').value = '';
-        showQr(id);
-        refresh();
+        renderCode(result);
+        startPolling();
       } catch (err) {
-        toast(err.message);
+        if (err.authRequired) { show('view-key'); return; }
+        showError(err.message);
+      } finally {
+        $('codeBtn').disabled = false;
       }
     }
 
-    async function showQr(id) {
-      qrTarget = id;
-      $('qrCard').style.display = 'block';
-      $('qrSession').textContent = 'Session: ' + id;
-      await pollQr();
+    function renderCode(codeInfo) {
+      const raw = String(codeInfo.code || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const formatted = raw.length === 8 ? `${raw.slice(0, 4)}-${raw.slice(4)}` : raw;
+      $('pairCode').textContent = formatted;
+      show('view-code');
+      startCountdown(new Date(codeInfo.expiresAt).getTime());
+      $('copyBtn').textContent = 'Copy code';
     }
 
-    async function pollQr() {
-      if (!qrTarget) return;
-      try {
-        const data = await api('/api/sessions/' + qrTarget + '/qr');
-        if (data.qr) {
-          $('qrImg').src = data.qr;
-        } else if (data.status === 'connected') {
-          $('qrImg').removeAttribute('src');
-          $('qrSession').textContent = 'Session ' + qrTarget + ' is connected.';
-          setTimeout(() => { $('qrCard').style.display = 'none'; qrTarget = null; }, 2500);
-          refresh();
+    function startCountdown(expiresAt) {
+      clearInterval(timerInterval);
+      const tick = () => {
+        const left = Math.floor((expiresAt - Date.now()) / 1000);
+        if (left <= 0) {
+          clearInterval(timerInterval);
+          $('codeTimer').textContent = 'Code expired — request a new one';
           return;
+        }
+        const m = Math.floor(left / 60);
+        const s = String(left % 60).padStart(2, '0');
+        $('codeTimer').textContent = `Valid for ${m}:${s}`;
+      };
+      tick();
+      timerInterval = setInterval(tick, 1000);
+    }
+
+    function stopTimers() {
+      clearInterval(pollTimer);
+      clearInterval(timerInterval);
+    }
+
+    // ---- QR flow -----------------------------------------------------------
+    async function refreshQr() {
+      try {
+        const data = await api('/api/pair/qr');
+        lastQrVersion = data.version;
+        if (data.qr) {
+          $('qrWait').style.display = 'none';
+          $('qrImg').src = data.qr;
+          $('qrImg').style.display = 'block';
         } else {
+          $('qrImg').style.display = 'none';
           $('qrImg').removeAttribute('src');
-          $('qrSession').textContent = 'Session ' + qrTarget + ' is ' + data.status + '. Waiting for a QR code...';
+          $('qrWait').style.display = 'grid';
+          $('qrWait').textContent = data.status === 'connected' ? 'Already connected' : 'Waiting for WhatsApp…';
         }
       } catch (err) {
-        $('qrSession').textContent = err.message;
+        if (err.authRequired) { show('view-key'); return; }
+        $('qrWait').style.display = 'grid';
+        $('qrWait').textContent = 'Could not load the QR — retrying…';
       }
-      setTimeout(pollQr, 1500);
     }
 
-    $('createBtn').addEventListener('click', create);
-    refresh();
-    setInterval(refresh, 3000);
+    // ---- Events ------------------------------------------------------------
+    $('codeBtn').addEventListener('click', requestCode);
+    $('phone').addEventListener('keydown', (e) => { if (e.key === 'Enter') requestCode(); });
+    $('qrBtn').addEventListener('click', () => show('view-qr'));
+    $('qrBackBtn').addEventListener('click', () => show('view-idle'));
+    $('codeBackBtn').addEventListener('click', () => { stopTimers(); show('view-idle'); });
+    $('retryBtn').addEventListener('click', () => show('view-idle'));
+    $('errorQrBtn').addEventListener('click', () => show('view-qr'));
+    $('copyBtn').addEventListener('click', async () => {
+      const text = $('pairCode').textContent.replace(/-/g, '');
+      try {
+        await navigator.clipboard.writeText(text);
+        $('copyBtn').textContent = 'Copied ✓';
+      } catch {
+        const area = document.createElement('textarea');
+        area.value = text;
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+        $('copyBtn').textContent = 'Copied ✓';
+      }
+    });
+    $('keyBtn').addEventListener('click', () => {
+      const value = $('portalKey').value.trim();
+      if (!value) return;
+      portalKey = value;
+      sessionStorage.setItem(KEY_STORAGE, value);
+      pollErrored = false;
+      pollStatus().then(startPolling);
+      show('view-loading');
+    });
+
+    // ---- Boot --------------------------------------------------------------
+    show('view-loading');
+    pollStatus().then(() => {
+      if (currentView === 'view-loading' || currentView === null) show('view-idle');
+      startPolling();
+    });
   </script>
 </body>
 </html>
