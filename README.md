@@ -1,8 +1,19 @@
 # MaloneX
 
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/brianmalone63/MaloneX-)
+
 MaloneX is a self-hosted WhatsApp bot built by **Brian Malone** on the standard [@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys) library. It pairs from a web page, runs 250+ commands through a modular plugin system, and keeps every session's settings, group settings and game state on file storage or Postgres.
 
 MaloneX is an original codebase with its own architecture, branding and reply style (clean professional panels, no emoji decoration in menus). It is not a fork or a re-skin of any existing bot project.
+
+## Get a live pairing URL in about five minutes
+
+1. Click the **Deploy to Heroku** button above and log in (Heroku requires a verified payment method; the eco dyno and essential Postgres tier are about 5 USD/month combined).
+2. Name the app and press **Deploy app**. Heroku builds it, injects `PORT` automatically and provisions Postgres.
+3. Press **Open app** (or visit `https://<your-app-name>.herokuapp.com`) on your phone.
+4. Enter your number in international format and press **GET PAIR CODE**, then type the 8-character code into WhatsApp: Settings → Linked devices → Link a device → *Pair with phone number instead*.
+
+That `https://<your-app-name>.herokuapp.com` address is your real pairing portal. Panel servers and Railway/Render/Koyeb work the same way — see [Deployment](#deployment).
 
 ## Requirements
 
@@ -173,8 +184,8 @@ The suite covers the command handler, permission gates (owner/admin/public, priv
 
 ### Heroku
 
-1. Deploy the repository and add the Heroku Postgres addon (`DATABASE_URL` is picked up automatically).
-2. The included `Procfile` runs `web: npm start`; Heroku injects `PORT` dynamically and the server binds it. `app.json` documents every environment variable for one-click deploys.
+1. Fastest path: the **Deploy to Heroku** button at the top of this README deploys the whole app in one click. Alternatively deploy the repository manually with `heroku create <app-name> && git push heroku main`.
+2. Heroku injects `PORT` dynamically and the server binds it; the app.json documents every environment variable and provisions the Postgres addon (`DATABASE_URL` is picked up automatically).
 3. Pair from the app URL (Settings → Reveal config vars → open the web dyno URL). Credentials are ephemeral on Heroku's filesystem, so sessions re-pair after a dyno restart; settings and bot data survive in Postgres.
 
 ### Docker
