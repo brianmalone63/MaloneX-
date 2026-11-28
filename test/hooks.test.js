@@ -1,109 +1,81 @@
-import test from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { PluginRegistry } from '../src/core/pluginloader.js';
-import { processMessage } from '../src/core/handler.js';
-import { stubSession, fakeSock, messageStub, textMessage } from './helpers.js';
+import { processMessage } from '../src/commands/handler.js';
+import { createRegistry } from '../src/commands/registry.js';
+import { fakeSock, chatMsg, statusMsg } from './helpers.js';
 
-function commandRecorder(name, order, access = 'owner') {
+function fakeSession() {
   return {
-    name,
-    description: `${name} description`,
-    category: 'General',
-    access,
-    async run() { order.push(`command:${name}`); }
+    config: { ownerPhone: null, mode: 'private' },
+    ownJid: '254712345678@s.whatsapp.net',
+    health: { commands: 0 },
+    errors: [],
+    isOwner(_jid, fromMe) {
+      return fromMe === true;
+    },
+    logError(message) {
+      this.errors.push(message);
+    }
   };
 }
 
-function makeRegistry(hooks, commands) {
-  const registry = new PluginRegistry({ logger: { warn: () => {} } });
-  for (const hook of hooks) registry.registerHook(hook);
-  for (const cmd of commands) registry.registerCommand(cmd);
-  return registry;
-}
+const hookPlugin = {
+  name: 'hooky',
+  description: 'records every message id',
+  category: 'internal',
+  access: 'owner',
+  run() {},
+  hook: 'message',
+  runHook({ msg, record }) {
+    record.push(msg.key.id);
+  }
+};
 
-test('hooks run before command parsing', async () => {
-  const order = [];
-  const registry = makeRegistry(
-    [{ hook: 'message', run: async () => { order.push('hook'); } }],
-    [commandRecorder('ping', order, 'public')]
-  );
-  const session = stubSession();
-  const sock = fakeSock();
-  await processMessage(session, sock, messageStub({ fromMe: true, message: textMessage('.ping') }), { registry });
-  assert.deepEqual(order, ['hook', 'command:ping']);
-});
+const pubPlugin = {
+  name: 'pub',
+  description: 'public command',
+  category: 'general',
+  access: 'public',
+  async run(ctx) {
+    await ctx.reply('pub-ok');
+  }
+};
 
-test('hooks run on status@broadcast while commands are ignored for statuses', async () => {
-  const order = [];
-  const seenStatus = [];
-  const registry = makeRegistry(
-    [{ hook: 'message', run: async (ctx) => { order.push('hook'); seenStatus.push(ctx.isStatus); } }],
-    [commandRecorder('ping', order, 'public')]
-  );
-  const session = stubSession();
-  const sock = fakeSock();
-  await processMessage(session, sock, messageStub({ jid: 'status@broadcast', message: textMessage('status text') }), { registry });
-  assert.deepEqual(order, ['hook']);
-  assert.equal(seenStatus[0], true);
-  assert.equal(session.health.messagesSeen, 1);
-});
+describe('hooks', () => {
+  it('run on every message, including status@broadcast', async () => {
+    const registry = createRegistry();
+    const record = [];
+    registry.register({ ...hookPlugin, runHook({ msg }) { record.push(msg.key.id); } });
+    const session = fakeSession();
+    const sock = fakeSock();
 
-test('a throwing hook does not stop later hooks or crash the handler', async () => {
-  const order = [];
-  const registry = makeRegistry(
-    [
-      { hook: 'message', run: async () => { throw new Error('hook exploded'); } },
-      { hook: 'message', run: async () => { order.push('second-hook'); } }
-    ],
-    [commandRecorder('ping', order, 'public')]
-  );
-  const session = stubSession();
-  const sock = fakeSock();
-  await processMessage(session, sock, messageStub({ fromMe: true, message: textMessage('.ping') }), { registry });
-  assert.deepEqual(order, ['second-hook', 'command:ping']);
-  assert.equal(session.health.errors, 1);
-  assert.equal(session.health.lastError, 'hook exploded');
-});
+    await processMessage(session, sock, statusMsg(), { registry, config: { prefix: '.', mode: 'private' } });
+    await processMessage(session, sock, chatMsg({ text: 'no prefix' }), { registry, config: { prefix: '.', mode: 'private' } });
 
-test('hook failures are logged with the session id masked', async () => {
-  const registry = makeRegistry(
-    [{ hook: 'message', run: async () => { throw new Error('bad hook'); } }],
-    []
-  );
-  const session = stubSession({ id: '254711222333' });
-  const sock = fakeSock();
-  await processMessage(session, sock, messageStub({ message: textMessage('plain message') }), { registry });
+    assert.deepEqual(record, ['ST1', 'MSG1']);
+    assert.equal(sock.sent.length, 0); // No command ran for either message.
+  });
 
-  const warnings = session.logger.calls.filter((c) => c.level === 'warn');
-  assert.equal(warnings.length, 1);
-  const printed = JSON.stringify(warnings[0]);
-  assert.match(printed, /bad hook/);
-  // The masked id 254********3 must appear; the raw number must not.
-  assert.match(printed, /254\*+/);
-  assert.doesNotMatch(printed, /254711222333/);
-});
-
-test('hooks receive the full context including settings and quoted message', async () => {
-  const seen = {};
-  const quoted = { imageMessage: { url: 'https://example.com/a.jpg' } };
-  const registry = makeRegistry(
-    [{
-      hook: 'message',
-      run: async (ctx) => {
-        seen.settings = ctx.settings;
-        seen.quoted = ctx.quoted;
-        seen.sender = ctx.sender;
-        seen.jid = ctx.jid;
+  it('run before commands and cannot break them', async () => {
+    const registry = createRegistry();
+    const record = [];
+    registry.register({
+      ...hookPlugin,
+      runHook() {
+        record.push('hook');
+        throw new Error('hook exploded');
       }
-    }],
-    []
-  );
-  const session = stubSession({ settingsRaw: { autoview: true } });
-  const sock = fakeSock();
-  const msg = messageStub({ message: { extendedTextMessage: { text: 'look at this', contextInfo: { quotedMessage: quoted } } } });
-  await processMessage(session, sock, msg, { registry });
-  assert.equal(seen.settings.autoview, true);
-  assert.deepEqual(seen.quoted, quoted);
-  assert.equal(seen.sender, '254700000000@s.whatsapp.net');
-  assert.equal(seen.jid, '254700000000@s.whatsapp.net');
+    });
+    registry.register(pubPlugin);
+    const session = fakeSession();
+    const sock = fakeSock();
+
+    await processMessage(session, sock, chatMsg({ text: '.pub', fromMe: true, jid: '254712345678@s.whatsapp.net' }), { registry, config: { prefix: '.', mode: 'private' } });
+
+    assert.deepEqual(record, ['hook']);
+    assert.equal(sock.sent.length, 1); // The command still ran.
+    assert.match(sock.sent[0].content.text, /pub-ok/);
+    assert.equal(session.errors.length, 1);
+    assert.match(session.errors[0], /hook "hooky" failed: hook exploded/);
+  });
 });

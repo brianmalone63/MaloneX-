@@ -1,8 +1,7 @@
 {
   "name": "MaloneX",
-  "description": "WhatsApp bot built by Brian Malone",
+  "description": "WhatsApp bot with session import from your pairing site, health monitoring and plain-language diagnostics",
   "repository": "https://github.com/brianmalone63/MaloneX-",
-  "logo": "https://raw.githubusercontent.com/brianmalone63/MaloneX-/main/logo.png",
   "keywords": ["whatsapp", "bot", "baileys"],
   "addons": [
     {
@@ -11,17 +10,17 @@
     }
   ],
   "env": {
-    "STORAGE": {
-      "description": "Storage backend: file or postgres. Postgres is selected automatically when DATABASE_URL starts with postgres://",
+    "SESSION": {
+      "description": "Your session string from the pairing site. A password for the whole WhatsApp account: never share it.",
       "required": false
     },
-    "DATABASE_URL": {
-      "description": "Postgres connection string (Heroku). Leave empty when using file storage.",
+    "OWNER_PHONE": {
+      "description": "Extra owner phone number, digits only with country code. The linked account is always the first owner.",
       "required": false
     },
-    "DATA_DIR": {
-      "description": "Directory used for file storage and Baileys credentials.",
-      "value": "./data",
+    "ACCESS_KEY": {
+      "description": "Key for the built-in pairing page and the admin overview endpoint. Auto-generated per deployment; reset it any time.",
+      "generator": "secret",
       "required": false
     },
     "PREFIX": {
@@ -29,53 +28,31 @@
       "value": ".",
       "required": false
     },
-    "OWNER": {
-      "description": "Owner phone numbers, comma separated, digits only (country code, no +).",
+    "MODE": {
+      "description": "public: strangers may use public commands. private: only owners.",
+      "value": "private",
       "required": false
     },
-    "PUBLIC_MODE": {
-      "description": "Allow non-owner users to run public commands.",
-      "value": "false",
+    "PAIRING_SITE_URL": {
+      "description": "Your pairing site, shown as the button on the bot's start page.",
+      "value": "https://brian.pairsite.space",
       "required": false
     },
-    "PORT": {
-      "description": "Port for the web pairing server. Heroku injects this automatically; the server binds whatever port it is given.",
-      "value": "3000",
+    "SESSION_PREFIX": {
+      "description": "Force the expected prefix of the SESSION value, e.g. MaloneX for \"MaloneX~eyJ...\".",
       "required": false
     },
-    "PORTAL_SESSION_ID": {
-      "description": "The single WhatsApp session the pairing portal manages.",
-      "value": "main",
+    "PAIR_NUMBER": {
+      "description": "Phone number to pair from the server console at boot when no session exists. The code is printed once to the log.",
       "required": false
     },
-    "PORTAL_PASSWORD": {
-      "description": "Optional. When set, the portal requires this key before showing any QR code or pairing code.",
+    "TRUST_PROXY": {
+      "description": "Trust X-Forwarded-For for rate limiting. Default true on Heroku, false elsewhere.",
       "required": false
     },
-    "ADMIN_KEY": {
-      "description": "Optional. Bearer key for the /api/sessions management API. When unset, session management is disabled.",
-      "required": false
-    },
-    "LOG_LEVEL": {
-      "description": "Log level: fatal, error, warn, info, debug, trace.",
-      "value": "info",
-      "required": false
-    },
-    "RATE_LIMIT_MS": {
-      "description": "Per-user command cooldown in milliseconds.",
-      "value": "3000",
-      "required": false
-    },
-    "AI_API_URL": {
-      "description": "Optional OpenAI-compatible endpoint for AI commands and the chatbot.",
-      "required": false
-    },
-    "AI_API_KEY": {
-      "description": "Optional API key for the AI provider.",
-      "required": false
-    },
-    "MEDIA_API_URL": {
-      "description": "Optional Cobalt-compatible media download provider base URL.",
+    "DATA_DIR": {
+      "description": "File storage directory. Only used when no Postgres is configured.",
+      "value": "./data",
       "required": false
     }
   },

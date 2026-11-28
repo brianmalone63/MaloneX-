@@ -1,24 +1,33 @@
-import { createRuntime } from './src/core/manager.js';
-import { createWebServer } from './src/web/server.js';
+// MaloneX entry point. Order matters:
+// 1. Load .env (real environment variables always win).
+// 2. Create the runtime: the web port is bound before any session work.
+// 3. Wire SIGTERM/SIGINT to a graceful shutdown with a 10 s hard exit.
+import { loadDotenv } from './src/core/env.js';
+loadDotenv();
 
-const runtime = await createRuntime();
-const server = createWebServer({ runtime });
+import { createRuntime, shutdownRuntime } from './src/runtime.js';
+import { UserError } from './src/core/errors.js';
 
-server.listen(runtime.config.port, () => {
-  runtime.logger.info(`pairing server listening on port ${runtime.config.port} (storage: ${runtime.config.storage})`);
-});
+try {
+  const runtime = await createRuntime();
 
-await runtime.startAll();
-
-let shuttingDown = false;
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  runtime.logger.info(`${signal} received; shutting down`);
-  server.close();
-  await runtime.stopAll();
-  process.exit(0);
+  let shuttingDown = false;
+  const onSignal = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    shutdownRuntime(runtime, signal);
+  };
+  process.on('SIGTERM', () => onSignal('SIGTERM'));
+  process.on('SIGINT', () => onSignal('SIGINT'));
+} catch (err) {
+  if (err instanceof UserError || err?.safe) {
+    console.error(`Startup failed: ${err.message}`);
+  } else if (err?.code === 'EADDRINUSE') {
+    console.error(`Startup failed: port ${err.port ?? ''} is already in use. Stop the other process or change SERVER_PORT.`);
+  } else if (err?.code === 'EACCES') {
+    console.error(`Startup failed: port ${err.port ?? ''} cannot be bound on this host (permission denied). Choose a port above 1024.`);
+  } else {
+    console.error(`Startup failed: ${err.message}`);
+  }
+  process.exit(1);
 }
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));

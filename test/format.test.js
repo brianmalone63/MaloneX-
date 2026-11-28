@@ -1,50 +1,34 @@
-import test from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { panel, notice, usage, error, onOff, heading, caption } from '../src/core/format.js';
-import { assertNoEmoji } from './helpers.js';
+import { panel, errorPanel, escapeHtml, commandReference } from '../src/commands/format.js';
+import { createRegistry } from '../src/commands/registry.js';
 
-test('panel renders the title as a bold uppercase heading', () => {
-  const out = panel('Automation', [{ label: 'Auto view status', value: 'ON' }]);
-  assert.match(out, /^\*AUTOMATION\*/);
-});
+describe('format helpers', () => {
+  it('panels render a branded title with rows', () => {
+    const text = panel('Health', [
+      { label: 'State', value: 'online' },
+      'plain line'
+    ]);
+    assert.match(text, /^\*MaloneX\* - Health\n/);
+    assert.match(text, /State: online\n/);
+    assert.match(text, /\nplain line$/);
+  });
 
-test('panel renders label and value rows separated by a colon', () => {
-  const out = panel('Automation', [{ label: 'Auto view status', value: 'ON' }]);
-  assert.match(out, /Auto view status : ON/);
-});
+  it('error panels carry the message', () => {
+    assert.match(errorPanel('That command failed. Reference abc123.'), /Reference abc123\./);
+  });
 
-test('panel renders plain string rows and an optional footer', () => {
-  const out = panel('Menu', ['General', 'Automation'], 'footer line');
-  assert.match(out, /General/);
-  assert.match(out, /Automation/);
-  assert.match(out, /footer line/);
-});
+  it('escapeHtml neutralizes markup and quotes', () => {
+    assert.equal(escapeHtml('<script>&"\''), '&lt;script&gt;&amp;&quot;&#39;');
+    assert.equal(escapeHtml(null), '');
+  });
 
-test('notice, usage and error include their text', () => {
-  assert.match(notice('the session is restarting'), /the session is restarting/);
-  assert.match(usage('use .autoview on|off'), /use \.autoview on\|off/);
-  assert.match(error('media too large'), /media too large/);
-});
-
-test('caption is a short single line', () => {
-  const out = caption('image · 1.00 MB');
-  assert.match(out, /image · 1\.00 MB/);
-  assert.equal(out.split('\n').length, 1);
-});
-
-test('heading uppercases the text', () => {
-  assert.equal(heading('settings'), '*SETTINGS*');
-});
-
-test('onOff renders booleans as ON and OFF', () => {
-  assert.equal(onOff(true), 'ON');
-  assert.equal(onOff(false), 'OFF');
-});
-
-test('no format output ever contains an emoji', () => {
-  const outputs = [
-    panel('Automation', [{ label: 'A', value: 'B' }, 'plain row'], 'footer'),
-    notice('text'), usage('text'), error('text'), caption('text'), heading('text')
-  ];
-  for (const out of outputs) assertNoEmoji(out);
+  it('commandReference groups by category and marks owner commands', () => {
+    const registry = createRegistry();
+    registry.register({ name: 'ping', description: 'Check liveness', category: 'general', access: 'public', run() {} });
+    registry.register({ name: 'restart', description: 'Reconnect cleanly', category: 'owner', access: 'owner', run() {} });
+    const text = commandReference(registry);
+    assert.match(text, /\*general\*\n- ping: Check liveness/);
+    assert.match(text, /\*owner\*\n- restart: Reconnect cleanly - owner only/);
+  });
 });

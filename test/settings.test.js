@@ -1,101 +1,143 @@
-import test from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import fsp from 'node:fs/promises';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FileStore } from '../src/core/filestore.js';
-import { Session } from '../src/core/session.js';
-import {
-  SETTINGS_SCHEMA, SETTING_KEYS, defaultSettings, validateSetting,
-  applyDefaults, isSingleEmoji
-} from '../src/core/settings.js';
+import { validateSetting, settingsList, Session } from '../src/session/session.js';
+import { FileStore } from '../src/store/filestore.js';
+import { PgStore, pgSslOptions } from '../src/store/pgstore.js';
+import { fakeConfig, fakeLogger } from './helpers.js';
+import { createRegistry } from '../src/commands/registry.js';
 
-test('safety relevant settings default to off and identity settings are seeded', () => {
-  const defaults = defaultSettings();
-  assert.equal(defaults.autoview, false);
-  assert.equal(defaults.autolike, false);
-  assert.equal(defaults.autolike_emoji, '\u2764\uFE0F');
-  assert.equal(defaults.vv_destination, 'self');
-  // Every protection and automation switch must ship disabled.
-  for (const key of ['ANTIDELETE', 'ANTI_EDIT', 'ANTICALL', 'ANTIVIEWONCE', 'PM_PERMIT']) {
-    assert.equal(defaults[key] === false || defaults[key] === 'off', true, `${key} must default off`);
+describe('setting validation', () => {
+  it('parses on/off style booleans', () => {
+    assert.deepEqual(validateSetting('autoview', 'on'), { ok: true, value: true });
+    assert.deepEqual(validateSetting('autoview', 'false'), { ok: true, value: false });
+    assert.deepEqual(validateSetting('autolike', 'enable'), { ok: true, value: true });
+    assert.equal(validateSetting('autoview', 'maybe').ok, false);
+  });
+
+  it('enforces the enum and the single-character emoji rule', () => {
+    assert.deepEqual(validateSetting('vv_destination', 'chat'), { ok: true, value: 'chat' });
+    assert.match(validateSetting('vv_destination', 'nowhere').error, /takes one of: self, chat/);
+    assert.deepEqual(validateSetting('autolike_emoji', '*'), { ok: true, value: '*' });
+    assert.match(validateSetting('autolike_emoji', 'ab').error, /exactly one character/);
+    assert.match(validateSetting('nope', 'x').error, /Unknown setting/);
+  });
+
+  it('lists every setting with its default', () => {
+    const list = settingsList();
+    const keys = list.map((s) => s.key).sort();
+    assert.deepEqual(keys, ['autolike', 'autolike_emoji', 'autoview', 'vv_destination']);
+    assert.equal(list.find((s) => s.key === 'autoview').default, false);
+  });
+});
+
+describe('settings persistence', () => {
+  it('round trips through the FileStore in a temp dir', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'malonex-settings-'));
+    const store = new FileStore({ dataDir: dir, logger: fakeLogger() });
+    await store.init();
+    await store.setSetting('000000000000', 'autoview', true);
+    await store.saveSessionMeta('000000000000', { phone: '254712345678' });
+
+    const reopened = new FileStore({ dataDir: dir, logger: fakeLogger() });
+    const settings = await reopened.getSettings('000000000000');
+    assert.equal(settings.autoview, true);
+    assert.equal(settings._meta.phone, '254712345678');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('Session.setSetting validates, updates memory and persists', async () => {
+    const store = {
+      saved: [],
+      async getSettings() { return {}; },
+      async setSetting(id, key, value) { this.saved.push({ key, value }); }
+    };
+    const session = new Session({
+      config: fakeConfig(),
+      store,
+      registry: createRegistry(),
+      logger: fakeLogger()
+    });
+    const result = await session.setSetting('autolike', 'on');
+    assert.deepEqual(result, { ok: true, value: true });
+    assert.equal(session.settings.autolike, true);
+    assert.deepEqual(store.saved, [{ key: 'autolike', value: true }]);
+
+    const bad = await session.setSetting('vv_destination', 'nowhere');
+    assert.equal(bad.ok, false);
+    assert.equal(store.saved.length, 1);
+  });
+
+  it('Session.setSetting survives storage failures with a clear error', async () => {
+    const store = {
+      async getSettings() { return {}; },
+      async setSetting() { throw new Error('disk full'); }
+    };
+    const session = new Session({
+      config: fakeConfig(),
+      store,
+      registry: createRegistry(),
+      logger: fakeLogger()
+    });
+    const result = await session.setSetting('autoview', 'on');
+    assert.equal(result.ok, false);
+    assert.match(result.error, /could not be saved/);
+  });
+});
+
+describe('pg store plumbing', () => {
+  class FakePool {
+    constructor() {
+      this.queries = [];
+      this.listeners = {};
+    }
+    on(event, fn) {
+      this.listeners[event] = fn;
+    }
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (sql.includes('FROM wa_settings')) return { rows: [{ k: 'autolike', v: true }] };
+      if (sql.includes('k = $2')) return { rows: [{ v: { registered: true } }] };
+      if (sql.includes('k <> $2')) return { rows: [{ k: 'session:1', v: { x: 1 } }] };
+      return { rows: [] };
+    }
+    async end() {}
   }
-  assert.equal(defaults.AUTO_REACT, 'off');
-  assert.equal(defaults.AUTO_READ_MESSAGES, 'off');
-  assert.equal(defaults.CHATBOT, 'off');
-  assert.equal(defaults.AUTO_BIO, false);
-  // Identity and service keys carry sane defaults.
-  assert.equal(defaults.BOT_NAME, 'MaloneX');
-  assert.equal(defaults.PACK_AUTHOR, 'Brian Malone');
-  assert.equal(SETTING_KEYS.includes('autoview') && SETTING_KEYS.includes('MEDIA_API_URL'), true);
-  assert.ok(SETTING_KEYS.length >= 30);
-});
 
-test('unknown setting keys are rejected', () => {
-  const result = validateSetting('bogus_key', true);
-  assert.equal(result.ok, false);
-  assert.match(result.error, /Unknown setting/);
-});
+  it('uses TLS for remote hosts and none for localhost', () => {
+    assert.equal(pgSslOptions('postgres://u:p@localhost:5432/db'), undefined);
+    assert.equal(pgSslOptions('postgres://u:p@127.0.0.1:5432/db'), undefined);
+    assert.deepEqual(pgSslOptions('postgres://u:p@ec2-1-2-3-4.compute-1.amazonaws.com:5432/db'), { rejectUnauthorized: false });
+    assert.deepEqual(pgSslOptions('not a url'), { rejectUnauthorized: false });
+  });
 
-test('boolean settings enforce their type', () => {
-  assert.equal(validateSetting('autoview', true).ok, true);
-  assert.equal(validateSetting('autoview', 'yes').ok, false);
-  assert.equal(validateSetting('autolike', 1).ok, false);
-});
+  it('round trips settings and auth through SQL, and bulk upserts via unnest', async () => {
+    const pool = new FakePool();
+    const store = new PgStore({ connectionString: 'postgres://u:p@remote.example/db', pool });
+    await store.setSetting('000000000000', 'autolike', true);
+    const insert = pool.queries.find((q) => q.sql.includes('INSERT INTO wa_settings'));
+    assert.match(insert.sql, /ON CONFLICT/);
+    assert.deepEqual(insert.params[1], 'autolike');
 
-test('enum settings only accept listed values', () => {
-  assert.equal(validateSetting('vv_destination', 'self').ok, true);
-  assert.equal(validateSetting('vv_destination', 'chat').ok, true);
-  assert.equal(validateSetting('vv_destination', 'group').ok, false);
-  assert.equal(validateSetting('vv_destination', 'SELF').ok, false);
-});
+    const settings = await store.getSettings('000000000000');
+    assert.equal(settings.autolike, true);
 
-test('the emoji validator accepts exactly one emoji and rejects the rest', () => {
-  assert.equal(isSingleEmoji('\u2764\uFE0F'), true);
-  assert.equal(isSingleEmoji('\u{1F44D}'), true);
-  assert.equal(isSingleEmoji('\u{1F929}'), true);
-  assert.equal(isSingleEmoji('abc'), false);
-  assert.equal(isSingleEmoji('\u2764\uFE0F\u2764\uFE0F'), false);
-  assert.equal(isSingleEmoji('1'), false);
-  assert.equal(isSingleEmoji('#'), false);
-  assert.equal(isSingleEmoji(''), false);
-  assert.equal(validateSetting('autolike_emoji', 'not-an-emoji').ok, false);
-});
+    await store.setAuthBulk('000000000000', [['session:1', '{"a":1}'], ['session:2', '{"b":2}']]);
+    const bulk = pool.queries.find((q) => q.sql.includes('unnest'));
+    assert.match(bulk.sql, /ON CONFLICT \(session_id, k\) DO UPDATE/);
+    assert.deepEqual(bulk.params[1], ['session:1', 'session:2']);
 
-test('applyDefaults fills missing keys and drops unknown stored keys', () => {
-  const settings = applyDefaults({ autoview: true, hacker: 'nope' });
-  assert.equal(settings.autoview, true);
-  assert.equal(settings.autolike, false);
-  assert.equal(settings.vv_destination, 'self');
-  assert.equal('hacker' in settings, false);
-});
+    const auth = await store.getAuth('000000000000');
+    assert.deepEqual(auth.creds, { registered: true });
+    assert.deepEqual(auth.keys['session:1'], { x: 1 });
+  });
 
-test('settings persist round trip through the FileStore in a temp dir', async () => {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'malonex-settings-'));
-  const store = new FileStore({ dataDir: dir });
-  await store.init();
-  await store.createSession('alpha');
-  await store.setSetting('alpha', 'autoview', true);
-  await store.setSetting('alpha', 'vv_destination', 'chat');
-
-  const reopened = new FileStore({ dataDir: dir });
-  assert.deepEqual(await reopened.getSettings('alpha'), { autoview: true, vv_destination: 'chat' });
-});
-
-test('session.setSetting updates memory, rejects unknown keys and persists', async () => {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'malonex-session-settings-'));
-  const store = new FileStore({ dataDir: dir });
-  await store.init();
-  await store.createSession('alpha');
-  const session = new Session({ id: 'alpha', store, config: { prefix: '.', owners: [], publicMode: false }, registry: { hooks: [], commands: [] } });
-
-  assert.equal(session.settings.autoview, false);
-  const ok = await session.setSetting('autoview', true);
-  assert.equal(ok.ok, true);
-  assert.equal(session.settings.autoview, true);
-  assert.equal((await store.getSettings('alpha')).autoview, true);
-
-  const bad = await session.setSetting('nonsense', true);
-  assert.equal(bad.ok, false);
-  assert.equal('nonsense' in session.settings, false);
+  it('swallows pool errors instead of crashing the process', () => {
+    const pool = new FakePool();
+    new PgStore({ connectionString: 'postgres://u:p@remote.example/db', pool, logger: fakeLogger() });
+    assert.equal(typeof pool.listeners.error, 'function');
+    assert.doesNotThrow(() => pool.listeners.error(new Error('idle client crash')));
+  });
 });
