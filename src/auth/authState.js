@@ -54,7 +54,15 @@ export async function createStoreAuthState({ store, sessionId }) {
     }
   };
 
-  const saveCreds = () => store.saveCreds(sessionId, toStore(creds));
+  const saveCreds = async () => {
+    try {
+      await store.saveCreds(sessionId, toStore(creds));
+    } catch (err) {
+      // Never let a failed save become an unhandled rejection (it would kill
+      // the process); the next creds.update retries with the latest creds.
+      console.error(`[malonex] could not save creds: ${err.message}`);
+    }
+  };
 
   return { state, saveCreds };
 }
