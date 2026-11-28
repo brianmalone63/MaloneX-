@@ -16,6 +16,9 @@ import { createAutoLike } from '../features/autolike.js';
 const PAIRING_READY_TIMEOUT_MS = 30000;
 const PAIRING_READY_POLL_MS = 250;
 const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
+// Baileys' default handshake timeout is 20 s; slow or throttled hosts get a
+// fairer window before the first connect is declared a 408 timeout.
+const HANDSHAKE_TIMEOUT_MS = 60000;
 // A QR event proves the WebSocket handshake finished; it stays valid as a
 // readiness signal for two minutes before a fresh one is needed.
 const QR_FRESH_MS = 120000;
@@ -127,7 +130,7 @@ export class Session {
 
     const makeSock = this.sockFactory
       ? (v) => this.sockFactory(v, auth)
-      : (v) => makeWASocket({
+        : (v) => makeWASocket({
           version: v || undefined,
           logger: this.logger,
           printQRInTerminal: false,
@@ -135,6 +138,7 @@ export class Session {
           auth,
           markOnlineOnConnect: false,
           syncFullHistory: false,
+          connectTimeoutMs: HANDSHAKE_TIMEOUT_MS,
           getMessage: () => undefined
         });
 
@@ -209,10 +213,14 @@ export class Session {
       }
       case 'reconnect': {
         this.health.consecutiveFailures += 1;
-        if (this.health.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        // undefined (no field): fall back to the three-strike default.
+        // null: no cap - network-class drops are retried forever.
+        const cap = d.maxFailures === undefined ? MAX_CONSECUTIVE_FAILURES : d.maxFailures;
+        if (cap !== null && this.health.consecutiveFailures >= cap) {
           this.stop();
           this.status = 'failed';
-          this.logger.error(`Stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive failures. Check connectivity, then restart the deployment.`);
+          const lastCode = this.health.lastDisconnect?.code ?? 'unknown';
+          this.logger.error(`Stopped after ${this.health.consecutiveFailures} consecutive failures (last disconnect code ${lastCode}). Check connectivity, then restart the deployment.`);
           break;
         }
         const delay = this.backoffFn

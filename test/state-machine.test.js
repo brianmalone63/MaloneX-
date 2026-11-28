@@ -152,6 +152,27 @@ describe('fake-Baileys state machine', () => {
     assert.equal(created.length, 3); // No fourth attempt.
   });
 
+  it('keeps retrying past three consecutive 408 failures', async () => {
+    // Network-class drops (408) must not stop the deployment: a slow or
+    // throttled host keeps backing off (capped at five minutes) until the
+    // connection comes back.
+    const { session, created } = makeSession();
+    await session.start();
+    created[0].user = { id: '254712345678@s.whatsapp.net' };
+    created[0].open();
+
+    for (let i = 0; i < 4; i += 1) {
+      const sock = created[i];
+      sock.close(408);
+      assert.equal(session.status, 'reconnecting'); // No stop between attempts.
+      await waitFor(() => created.length >= i + 2);
+    }
+    assert.notEqual(session.status, 'failed'); // Still trying, never stopped.
+    assert.equal(session.health.consecutiveFailures, 4);
+    await sleep(120);
+    assert.equal(created.length, 5); // The fifth attempt was made.
+  });
+
   it('restarts cleanly and clears timers', async () => {
     const { session, created } = makeSession();
     await session.start();

@@ -53,7 +53,8 @@ export function classifyDisconnect(code, { registered = true } = {}) {
       return {
         action: 'reconnect',
         reason: 'WhatsApp reported an internal server error (500).',
-        advice: 'Usually temporary. The bot retries automatically and stops after three consecutive failures.'
+        advice: 'Usually temporary. The bot retries automatically and stops after three consecutive failures.',
+        maxFailures: MAX_CONSECUTIVE_FAILURES
       };
     case 408:
     case 428:
@@ -61,13 +62,17 @@ export function classifyDisconnect(code, { registered = true } = {}) {
       return {
         action: 'reconnect',
         reason: `Connection dropped (${code}).`,
-        advice: 'Usually a network hiccup. The bot reconnects with increasing waits between attempts.'
+        advice: 'Usually a network hiccup. The bot keeps reconnecting with waits up to five minutes; if it never comes back online, the host may be blocking outbound access to WhatsApp.',
+        // Network-class failures are retried forever (capped backoff): a slow
+        // host must not turn into a stopped deployment after three tries.
+        maxFailures: null
       };
     default:
       return {
         action: 'reconnect',
         reason: `Unknown disconnect (code ${code ?? 'unknown'}).`,
-        advice: 'The bot reconnects with increasing waits between attempts.'
+        advice: 'The bot keeps reconnecting with increasing waits between attempts.',
+        maxFailures: null
       };
   }
 }

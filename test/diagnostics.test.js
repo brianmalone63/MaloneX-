@@ -26,16 +26,22 @@ describe('disconnect classification', () => {
     const d = classifyDisconnect(500, { registered: true });
     assert.equal(d.action, 'reconnect');
     assert.match(d.advice, /three consecutive failures/);
+    assert.equal(d.maxFailures, 3); // Only 500-class failures stop the bot.
   });
 
-  it('408, 428 and 503 reconnect with backoff', () => {
+  it('408, 428 and 503 reconnect with backoff and never stop the bot', () => {
     for (const code of [408, 428, 503]) {
-      assert.equal(classifyDisconnect(code, { registered: true }).action, 'reconnect');
+      const d = classifyDisconnect(code, { registered: true });
+      assert.equal(d.action, 'reconnect');
+      assert.equal(d.maxFailures, null);
+      assert.match(d.advice, /keeps reconnecting/);
     }
   });
 
-  it('an unknown code reconnects when registered', () => {
-    assert.equal(classifyDisconnect(999, { registered: true }).action, 'reconnect');
+  it('an unknown code reconnects when registered, without a failure cap', () => {
+    const d = classifyDisconnect(999, { registered: true });
+    assert.equal(d.action, 'reconnect');
+    assert.equal(d.maxFailures, null);
   });
 
   it('a connection closed before registration stops with pairing advice', () => {

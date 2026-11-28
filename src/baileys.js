@@ -37,6 +37,7 @@ export async function getWaVersion(logger) {
   try {
     const result = await fetchLatestBaileysVersion();
     versionCache = { version: result.version, at: Date.now() };
+    if (logger) logger.info(`Using WhatsApp Web version ${result.version.join('.')}.`);
     return versionCache.version;
   } catch (err) {
     // Offline or blocked: keep whatever we have (Baileys falls back to its
