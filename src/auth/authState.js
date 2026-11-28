@@ -5,10 +5,14 @@
 import { BufferJSON, initAuthCreds } from '../baileys.js';
 
 const toStore = (value) => JSON.stringify(value, BufferJSON.replacer);
-// FileStore and Postgres return already-parsed objects (jsonb columns are
-// parsed by the driver); strings are revived through BufferJSON. Both shapes
-// arrive here, so accept either.
-const fromStore = (value) => (typeof value === 'string' ? JSON.parse(value, BufferJSON.reviver) : value);
+// FileStore and Postgres return already-parsed objects (the file store uses a
+// plain JSON.parse, and jsonb columns are parsed by the driver), so Buffer
+// fields arrive as { type: 'Buffer', data: [...] } plain objects. Always run
+// the value through BufferJSON.reviver so they become real Buffers again;
+// otherwise Baileys fails the handshake with 'The "list[1]" argument must be
+// an instance of Buffer or Uint8Array'.
+const fromStore = (value) =>
+  JSON.parse(typeof value === 'string' ? value : JSON.stringify(value), BufferJSON.reviver);
 
 export async function createStoreAuthState({ store, sessionId }) {
   const rows = await store.getAuth(sessionId);
@@ -17,7 +21,7 @@ export async function createStoreAuthState({ store, sessionId }) {
   // the store is async. All keys are loaded once at boot and written through.
   const cache = new Map();
   for (const [composite, value] of Object.entries(rows.keys)) {
-    cache.set(composite, typeof value === 'string' ? fromStore(value) : value);
+    cache.set(composite, fromStore(value));
   }
 
   const state = {
