@@ -21,12 +21,25 @@ export class FileStore {
     return path.join(this.sessionDir(id), 'keys');
   }
 
-  // Atomic write: temp file in the same directory, then rename over the
-  // target. A crash mid-write can never leave a half-written file behind.
+  // Atomic write: unique temp file in the same directory, then rename over the
+  // target. Writes to the same file are queued, because Baileys fires several
+  // creds updates in the same millisecond; with a shared temp name the second
+  // rename failed with ENOENT and crashed the process.
   async atomicWrite(file, data) {
-    const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-    await fs.writeFile(tmp, data);
-    await fs.rename(tmp, file);
+    this.writeQueues ??= new Map();
+    const prev = this.writeQueues.get(file) || Promise.resolve();
+    const run = prev.catch(() => {}).then(async () => {
+      const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(tmp, data);
+      await fs.rename(tmp, file);
+    });
+    this.writeQueues.set(file, run);
+    try {
+      await run;
+    } finally {
+      if (this.writeQueues.get(file) === run) this.writeQueues.delete(file);
+    }
   }
 
   async init() {
